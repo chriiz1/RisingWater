@@ -1,10 +1,12 @@
+## Userinterface, Design
+
 CANVAS_START=20
 
 WINDOW_WIDTH=1000
 
 WINDOW_HEIGHT=850
 
-DEFAULT_SPEED = 7
+DEFAULT_SPEED = 8
 
 BLOCK_SIZE = 30
 
@@ -16,5 +18,10 @@ EXTEND_X = 30
 
 EXTEND_Y = 25
 
+SAVE_FOLDER = '/home/christoph/Own_projects/RisingWater/worlds' 
 
-BTN_START_STOP_TEXT = {False: 'Run', True: 'Stop'}
+
+## Game mechanics ##
+
+AIR_BLOCK_BELOW_CRITICAL_DISTANCE = 2
+AIR_BLOCK_SIDE_CRITICAL_DISTANCE = 4
