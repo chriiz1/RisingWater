@@ -101,8 +101,8 @@ class UI:
             self.start_stop_btn.configure(bg="red",activebackground="tomato")
 
     def show_help(self):
-        messagebox.showinfo("Bli Bla Blub!","aösldfkjaölsdjflöasjdlkföjaskldöjfklösadjfjldsfjölk")
-
+        messagebox.showinfo("Some hints ;) ","1. Right Click for changing Block Type\n2. You can disable the Erosion!\n3. Use Load-/Save Default for quicker loading and saving")
+        
 
     def get_speed(self):
         control_val = self.speed.get()
