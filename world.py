@@ -1,10 +1,12 @@
 from __future__ import annotations
 from ast import Str
+from copy import deepcopy
 from logging import critical
 import os
 import constants
 import json
 import math
+import copy
 import numpy as np
 import random as rnd
 import tkinter as tk
@@ -14,14 +16,14 @@ X = 0
 Y = 1
 
 class Block:
-    def __init__(self, type: Str, subtype: Str, pos_x: int, pos_y: int, pol_ref: int, world_ref: World):
-        self.type = type
-        self.subtype = subtype
+    def __init__(self, pos: tuple, pol_ref: int, world_ref: World):
+        self.type = None
+        self.subtype = None
         self.pol_ref = pol_ref
-        self.pos_x = pos_x
-        self.pos_y = pos_y
+        self.pos_x = pos[X]
+        self.pos_y = pos[Y]
         self.world = world_ref
-        self.waterbody = None
+        self.swapped_with = None
         self.swapped = False
     
     def get_neighbors(self, direction = None):
@@ -39,7 +41,7 @@ class Block:
             neighbors.append(self.world.blocks[(self.pos_x, self.pos_y+1)])
 
         return neighbors
-
+    
     def is_at_bottom(self):
         return self.pos_y == self.world.extend[Y]-1
 
@@ -74,8 +76,65 @@ class Block:
     def get_pos(self):
         return (self.pos_x, self.pos_y)
     
+    def set_pos(self, pos):
+        self.pos_x = pos[X]
+        self.pos_y = pos[Y]
+    
     def to_json(self):
         return {self.get_pos(): {'type': self.type}}
+        
+    def get_block(type, pos, pol_ref, world_ref):
+        if type == "air":
+            return AirBlock(pos=pos, pol_ref = pol_ref, world_ref = world_ref)
+        if type == "water":
+            return WaterBlock(pos=pos, pol_ref = pol_ref, world_ref = world_ref)
+        if type == "earth":
+            return EarthBlock(pos=pos, pol_ref = pol_ref, world_ref = world_ref)
+        if type == "sand":
+            return SandBlock(pos=pos, pol_ref = pol_ref, world_ref = world_ref)
+        if type == "water_entry":
+            return WaterEntryBlock(pos=pos, pol_ref = pol_ref, world_ref = world_ref)
+        if type == "water_exit":
+            return WaterExitBlock(pos=pos, pol_ref = pol_ref, world_ref = world_ref)
+
+class WaterBlock(Block):
+    def __init__(self, pos: tuple, pol_ref: int, world_ref: World):
+        Block.__init__(self, pos, pol_ref, world_ref)
+        self.waterbody = None
+        self.type = "water"
+        self.subtype = "water"
+
+class AirBlock(Block):
+    def __init__(self, pos: tuple, pol_ref: int, world_ref: World):
+        Block.__init__(self,pos, pol_ref, world_ref)
+        self.type = "air"
+        self.subtype = "air"
+
+class EarthBlock(Block):
+    def __init__(self, pos: tuple, pol_ref: int, world_ref: World):
+        Block.__init__(self, pos, pol_ref, world_ref)
+        self.type = "earth"
+        self.subtype = "earth"
+        self.erosion_count = 7
+
+class SandBlock(Block):
+    def __init__(self, pos: tuple, pol_ref: int, world_ref: World):
+        Block.__init__(self, pos, pol_ref, world_ref)
+        self.type = "sand"
+        self.subtype = "sand"
+        self.move_direction = None
+
+class WaterEntryBlock(Block):
+    def __init__(self, pos: tuple, pol_ref: int, world_ref: World):
+        Block.__init__(self, pos, pol_ref, world_ref)
+        self.type = "water"
+        self.subtype = "water_entry"
+
+class WaterExitBlock(Block):
+    def __init__(self, pos: tuple, pol_ref: int, world_ref: World):
+        Block.__init__(self, pos, pol_ref, world_ref)
+        self.type = "air"
+        self.subtype = "water_exit"
     
 class Watercolumn:
     def __init__(self, head, foot):
@@ -90,7 +149,6 @@ class Waterbody:
         self.top_level = constants.EXTEND_Y -1
         self.low_level = 0
         self.surrounding_air_blocks = {}
-        self.lowest_surrounding_air = 0
         self.block_register = []
         self.watercolumns = {}
         
@@ -196,7 +254,6 @@ class Waterbody:
 class World:
     def __init__(self, extend = [constants.EXTEND_X, constants.EXTEND_Y], blocks = {}):
         import user_interface
-
         self.root = None
         self.ui = user_interface.UI
         self.extend = extend
@@ -218,7 +275,7 @@ class World:
                         start_y + block_size]
                 fill = constants.BLOCK_COLOR["air"]
                 ref = canvas.create_polygon(points, fill=fill, outline="black")
-                block = Block("air", "air", x, y, ref, self)
+                block = Block.get_block("air", (x,y), ref, self)
                 self.blocks[(x,y)] = block
 
     def prepare_save_file(self):
@@ -248,8 +305,8 @@ class World:
             input = json.load(json_file)
             for key, block in input.items():
                 key = eval(key)
-                self.blocks[key].type = block['type'] 
-                self.blocks[key].subtype = block['subtype']
+                new_block = Block.get_block(block['subtype'],key,self.blocks[key].pol_ref,self.blocks[key].world)
+                self.blocks[key] = new_block
                 color = constants.BLOCK_COLOR[block['subtype']]
                 self.canvas.itemconfig(self.blocks[key].pol_ref, fill = color)
 
@@ -261,7 +318,8 @@ class World:
         filetypes=(('json files', '*.json'),('All files', '*.*'))
         filename = filedialog.askopenfilename(title='Open a file',
                 filetypes=filetypes, initialdir=constants.SAVE_FOLDER)
-        self.load_default(filename)
+        if filename is not ():
+            self.load_default(filename)
     
     def draw(self):
         for x in range(self.extend[X]):
@@ -270,7 +328,46 @@ class World:
                 fill = constants.BLOCK_COLOR[block.subtype]
                 self.canvas.itemconfig(block.pol_ref, fill = fill)
 
-    def organise_water_blocks(self): 
+    def end_tick(self):
+        for _, block in self.blocks.items():
+            block.swapped = False
+            block.swapped_with = None
+
+    def analyse_blocks(self):
+        self.analyse_water_blocks()
+
+    def analyse_earth_blocks(self):
+        earth_blocks = [block for _, block in self.blocks.items() if block.type == 'earth']
+        for block in earth_blocks:
+            neighbors = block.get_neighbors()
+            swapped_neighbors = [neighbor for neighbor in neighbors 
+                                if neighbor.swapped == True and neighbor.type == 'water']
+            count = len([True for block in swapped_neighbors if block.swapped_with.type == 'air'])
+            block.erosion_count -= count
+            if block.erosion_count <= 0: 
+                new_block = Block.get_block("sand",block.get_pos(), block.pol_ref, block.world)
+                self.blocks[block.get_pos()] = new_block
+            pass
+    
+    def analyse_sand_blocks(self):
+        sand_blocks = [block for _, block in self.blocks.items() if block.type == 'sand']
+        for block in sand_blocks:
+            neighbors = block.get_neighbors()
+            swapped_neighbors = [neighbor for neighbor in neighbors 
+                                if neighbor.swapped == True and neighbor.type == 'water'
+                                and neighbor.swapped_with.type == 'air']
+            if len(swapped_neighbors) > 0:
+                target = rnd.choice(swapped_neighbors)
+                x = target.pos_x - target.swapped_with.pos_x
+                if x > 0:
+                    block.move_direction = 'right'
+                elif x < 0:
+                    block.move_direction = 'left'
+                else:
+                    block.move_direction = 'both'
+                           
+
+    def analyse_water_blocks(self): 
         '''
         organise all water blocks into waterbodies and watercolumns
         '''
@@ -314,6 +411,39 @@ class World:
         '''
         the core function for the movement of the water blocks
         '''
+        sand_blocks = {pos:block for pos, block in self.blocks.items() if block.type == 'sand' 
+                        and block.pos_y != constants.EXTEND_Y-1}
+        for pos, sand_block in sand_blocks.items():
+            if self.blocks[(pos[X], pos[Y]+1)].type in ['air','water']:
+                self.swap(sand_block, self.blocks[(pos[X], pos[Y]+1)])
+            
+        sand_blocks = {pos:block for pos, block in self.blocks.items() if block.type == 'sand' 
+                        and block.swapped == False and block.move_direction != None}
+        for pos, block in sand_blocks.items():
+            if ((block.move_direction == 'right' and pos[X] == constants.EXTEND_X -1) or
+                (block.move_direction == 'left' and pos[X] == 0)):
+                continue
+
+            possible_directions = []
+            direction = None
+            if block.move_direction == 'both':
+                if pos[X] < constants.EXTEND_X -1 and self.blocks[((pos[X]+1), pos[Y])].type in ['air','water']:
+                    possible_directions.append('right')
+                if pos[X] > 0 and self.blocks[((pos[X]-1), pos[Y])].type in ['air','water']:
+                    possible_directions.append('left')
+            if block.move_direction == 'right' and self.blocks[(pos[X]+1, pos[Y])].type in ['air','water']:
+                possible_directions.append('right')
+            if block.move_direction == 'left' and self.blocks[(pos[X]-1, pos[Y])].type in ['air','water']:
+                possible_directions.append('left')
+
+            if len(possible_directions) > 0:
+                direction = rnd.choice(possible_directions)
+                if direction == 'right':
+                    self.swap(block, self.blocks[(pos[X]+1, pos[Y])])
+                elif direction == 'left':
+                    self.swap(block, self.blocks[(pos[X]-1, pos[Y])])
+            block.move_direction = None     
+
         # order waterbodies by their length: bigger waterbodies can move earlier
         self.waterbodies.sort(key = lambda x: len(x.blocks), reverse=True)
 
@@ -334,12 +464,12 @@ class World:
                     air_pos = None
 
                     # Choose nearest air block with a certain probability
-                    if True == rnd.choice([True,False]):
-                        air_pos = self.get_nearest_block(column.head.get_pos(), air_blocks)
+                    #if True == rnd.choice([True,False]):
+                    air_pos = self.get_nearest_block(column.head.get_pos(), air_blocks)
                     
                     # Otherwise randomly choose an air block
-                    elif bool(air_blocks):
-                        air_pos = rnd.choice(list(air_blocks.keys()))
+                    # elif bool(air_blocks):
+                    #     air_pos = rnd.choice(list(air_blocks.keys()))
 
                     if air_pos == None:
                         continue
@@ -349,14 +479,16 @@ class World:
                     air_block['swapped'] = True
                     column.swapped = True
 
-        for _, block in self.blocks.items():
-            block.swapped = False
 
     def swap(self, block_a: Block, block_b: Block):
         '''
         swap the attributes of two blocks
         '''
         if block_a.subtype == 'water_entry' and block_b.subtype == 'water_exit':
+            block_a.swapped = True
+            block_b.swapped = True
+            block_a.swapped_with = block_b
+            block_b.swapped_with = block_a
             return
         elif block_a.subtype == 'water_entry':
             block_b.type = block_a.type
@@ -365,14 +497,18 @@ class World:
             block_a.type = block_b.type
             block_a.subtype = block_b.type
         else:
-            temp_type = block_a.type
-            temp_subtype = block_a.subtype
-            block_a.type = block_b.type
-            block_a.subtype = block_b.subtype
-            block_b.type = temp_type
-            block_b.subtype = temp_subtype
+            a_stuff = (block_a.get_pos(), block_a.pol_ref)
+            b_stuff = (block_b.get_pos(), block_b.pol_ref)
+            block_a.set_pos(b_stuff[0])
+            block_a.pol_ref = b_stuff[1]
+            block_b.set_pos(a_stuff[0])
+            block_b.pol_ref = a_stuff[1]
+            self.blocks[a_stuff[0]] = block_b
+            self.blocks[b_stuff[0]] = block_a
         block_a.swapped = True
         block_b.swapped = True
+        block_a.swapped_with = block_b
+        block_b.swapped_with = block_a
 
     def get_nearest_block(self, pos_fixed, positions):
         '''
