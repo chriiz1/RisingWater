@@ -1,6 +1,8 @@
 ## Userinterface, Design
 
 from pickle import FALSE
+import os
+from pathlib import Path
 
 CANVAS_START=20
 
@@ -24,7 +26,7 @@ EXTEND_X = 30
 
 EXTEND_Y = 25
 
-SAVE_FOLDER = '/home/christoph/Own_projects/RisingWater/worlds' 
+SAVE_FOLDER = os.path.join(Path(__file__).parent, "worlds")
 
 
 ## Game mechanics ##
