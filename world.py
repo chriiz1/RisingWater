@@ -318,7 +318,7 @@ class World:
         filetypes=(('json files', '*.json'),('All files', '*.*'))
         filename = filedialog.askopenfilename(title='Open a file',
                 filetypes=filetypes, initialdir=constants.SAVE_FOLDER)
-        if filename is not ():
+        if filename:
             self.load_default(filename)
     
     def draw(self):
