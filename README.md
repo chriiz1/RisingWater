@@ -1,6 +1,8 @@
 # RisingWater
 
-This is a program which simulates the flow of water and the erosion of rock with 2D-blocks. It was created with the Python GUI Tkinter.
+This is a program which simulates the flow of water and the erosion of rock with 2D-blocks.
+
+It was created with the Python GUI Tkinter. ( Install on Linux: "sudo apt install python3.x-tk" )
 
 Different Blocks with different properties are available:
 
