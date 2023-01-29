@@ -1,6 +1,0 @@
-Wassersäulen bilden
-for each wassersäule:
-	swap head with 
-		air at bottom 
-		or nearest air
-	
